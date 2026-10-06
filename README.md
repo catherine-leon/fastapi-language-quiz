@@ -15,6 +15,14 @@ The question bank is stored as CSV data and can be filtered dynamically by **pro
 - measure API request processing time through FastAPI middleware;
 - use the API through either HTTP requests or an interactive HTML frontend.
 
+## Question source
+
+The question bank was created specifically for this project based on exercises from:
+
+**Mansuy, Morgane. (2022). *Plus que parfait ! FLE : Initiation à la grammaire française (A1/A2).* Ellipses. ISBN 978-2-340-06891-9.**
+
+The exercises were adapted into a structured quiz dataset with proficiency levels, linguistic categories, multiple-choice answers and explanatory comments.
+
 ## API
 
 The application is implemented in [`main.py`](main.py) with **FastAPI**.
