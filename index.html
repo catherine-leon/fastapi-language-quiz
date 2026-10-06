@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Quiz Automatique</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; padding: 20px; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 700px; }
+        h1 { text-align: center; color: #333; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button#btnGenerate { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; transition: background 0.3s; margin-top: 10px;}
+        button#btnGenerate:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        .error { color: #d9534f; background-color: #fdf7f7; padding: 10px; border: 1px solid #d9534f; border-radius: 4px; margin-bottom: 15px; display: none; }
+        .loading { text-align: center; color: #666; font-style: italic; display: none; margin-top: 10px;}
+
+        .quiz-container { margin-top: 30px; }
+        .question-card { background-color: #fafafa; border: 1px solid #e1e1e1; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        .question-text { font-size: 1.2em; font-weight: bold; margin-bottom: 15px; color: #2c3e50; }
+
+        .options { display: flex; flex-direction: column; gap: 10px; }
+        .option-btn { 
+            padding: 12px; 
+            text-align: left; 
+            background: white; 
+            border: 1px solid #ddd; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+        .option-btn:hover:not(:disabled) { background-color: #e9ecef; border-color: #adb5bd; }
+
+        .option-btn.correct { background-color: #d4edda; border-color: #c3e6cb; color: #155724; font-weight: bold; }
+        .option-btn.wrong { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; opacity: 0.8; }
+
+        .feedback { margin-top: 15px; padding: 10px; background-color: #e2e3e5; border-radius: 5px; font-size: 0.9em; display: none; }
+        .feedback strong { display: block; margin-bottom: 5px; }
+
+        .meta-info { font-size: 0.8em; color: #aaa; margin-top: 15px; text-align: right; border-top: 1px solid #eee; padding-top: 5px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🇫🇷 Quiz de Français</h1>
+    
+    <div id="error-msg" class="error"></div>
+
+    <div class="form-group">
+        <label for="level">Niveau :</label>
+        <select id="level" disabled>
+            <option>Chargement...</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="category">Catégorie :</label>
+        <select id="category" disabled>
+            <option>Chargement...</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="numQuestions">Nombre de questions :</label>
+        <input type="number" id="numQuestions" value="3" min="1" max="20">
+    </div>
+
+    <button id="btnGenerate" onclick="generateQuiz()" disabled>Générer le Quiz</button>
+    <div id="loading" class="loading">Génération du quiz en cours...</div>
+
+    <div id="quizResult" class="quiz-container"></div>
+</div>
+
+<script>
+    const API_URL = "http://localhost:8000";
+
+    window.onload = async function() {
+        try {
+            const response = await fetch(`${API_URL}/info`);
+            if (!response.ok) throw new Error("Impossible de contacter l'API.");
+            const data = await response.json();
+            populateSelect('level', data.levels);
+            populateSelect('category', data.categories);
+            document.getElementById('btnGenerate').disabled = false;
+        } catch (error) {
+            showError("Erreur de connexion : " + error.message);
+        }
+    };
+
+    function populateSelect(elementId, items) {
+        const select = document.getElementById(elementId);
+        select.innerHTML = "";
+        select.disabled = false;
+        if (items.length === 0) {
+            select.add(new Option("Aucune donnée disponible", ""));
+            return;
+        }
+        items.forEach(item => select.add(new Option(item, item)));
+    }
+
+    async function generateQuiz() {
+        const level = document.getElementById('level').value;
+        const category = document.getElementById('category').value;
+        const num = parseInt(document.getElementById('numQuestions').value);
+        const errorDiv = document.getElementById('error-msg');
+        const resultDiv = document.getElementById('quizResult');
+        const loadingDiv = document.getElementById('loading');
+
+        errorDiv.style.display = 'none';
+        resultDiv.innerHTML = "";
+        
+        if (!level || !category) { showError("Veuillez tout sélectionner."); return; }
+
+        loadingDiv.style.display = 'block';
+
+        try {
+            const response = await fetch(`${API_URL}/generate_quiz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level: level, categories: [category], number_of_questions: num })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || "Erreur.");
+            
+            displayQuiz(data.quiz);
+        } catch (error) {
+            showError(error.message);
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    function displayQuiz(questions) {
+        const container = document.getElementById('quizResult');
+        
+        if (questions.length === 0) {
+            container.innerHTML = "<p style='text-align:center;'>Aucune question trouvée.</p>";
+            return;
+        }
+
+        questions.forEach((q, index) => {
+
+            const cardId = `question-${index}`;
+
+            const commentText = q.commentaire ? q.commentaire : "Pas d'explication supplémentaire.";
+
+            const html = `
+                <div class="question-card" id="${cardId}">
+                    <div class="question-text">Question ${index + 1} : ${q.question}</div>
+                    <div class="options">
+                        ${createButton(q, 'A', q.reponseA, cardId, q.reponse)}
+                        ${createButton(q, 'B', q.reponseB, cardId, q.reponse)}
+                        ${createButton(q, 'C', q.reponseC, cardId, q.reponse)}
+                        ${createButton(q, 'D', q.reponseD, cardId, q.reponse)}
+                    </div>
+                    <div class="feedback" id="feedback-${cardId}">
+                        <strong>Explication :</strong>
+                        <span>${commentText}</span>
+                    </div>
+                    <div class="meta-info">Niveau: ${q.niveau} | Catégorie: ${q.categorie}</div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+        });
+    }
+
+    function createButton(q, letter, text, cardId, correctAnswer) {
+        if (!text) return '';
+
+        const safeCorrect = correctAnswer.trim(); 
+        
+        return `
+            <button class="option-btn" 
+                onclick="checkAnswer(this, '${letter}', '${safeCorrect}', '${cardId}')">
+                <strong>${letter})</strong> ${text}
+            </button>
+        `;
+    }
+
+    function checkAnswer(btn, selectedLetter, correctLetter, cardId) {
+        const card = document.getElementById(cardId);
+        const buttons = card.querySelectorAll('.option-btn');
+        const feedback = document.getElementById(`feedback-${cardId}`);
+
+        buttons.forEach(b => b.disabled = true);
+
+        if (selectedLetter === correctLetter) {
+
+            btn.classList.add('correct');
+        } else {
+
+            btn.classList.add('wrong');
+
+            buttons.forEach(b => {
+
+
+                if (b.innerHTML.includes(`<strong>${correctLetter})</strong>`)) {
+                    b.classList.add('correct');
+                }
+            });
+        }
+
+        feedback.style.display = 'block';
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('error-msg');
+        el.innerText = msg;
+        el.style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
